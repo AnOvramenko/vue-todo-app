@@ -1,7 +1,76 @@
 <script setup>
-  import { ref } from "vue";
-  import originalTodos from "./data/todos";
-  const todos = ref(originalTodos);
+  import { computed, onBeforeMount, ref, watch } from "vue";
+
+  const todos = ref([]);
+  const title = ref('');
+  const errorMessage = ref('');
+  const status = ref('all')
+
+  onBeforeMount(() => {
+    try {
+      todos.value = JSON.parse(localStorage.getItem('todos'));
+    } catch (error) {}
+
+    if (!Array.isArray(todos.value)) {
+      todos.value = [];
+    }
+  })
+
+  const activeTodos = computed(() => {
+    return todos.value.filter(todo => !todo.completed)
+  });
+
+  const visibleTodos = computed(() => {
+    switch (status.value) {
+      case 'active':
+        return activeTodos.value;
+      case 'completed':
+        return todos.value.filter(todo => todo.completed);
+      default:
+        return todos.value;
+    }
+  })
+
+  watch(
+    todos,
+    newTodos => {
+      localStorage.setItem('todos', JSON.stringify(newTodos));
+    },
+    {deep: true},
+  )
+
+  function addTodo() {
+    if (!title.value) {
+      errorMessage.value = 'Title should not be empty';
+
+      return;
+    };
+
+    todos.value.push({
+      id: Date.now(),
+      title: title.value,
+      completed: false,
+    });
+
+    title.value = '';
+  }
+
+  function toggleAll() {
+    const isCompletedTodos = todos.value.every(todo => todo.completed === true);
+
+    if (isCompletedTodos) {
+      todos.value = todos.value.map(todo => ({...todo, completed: !isCompletedTodos}));
+    } else {
+      todos.value = todos.value.map(todo => {
+        if (todo.completed === isCompletedTodos) {
+          return ({...todo, completed: !isCompletedTodos})
+        }
+
+        return todo;
+      })
+    }
+  }
+  
 </script>
 
 <template>
@@ -12,14 +81,22 @@
       <header class="todoapp__header">
         <!-- this button should have `active` class only if all todos are
         completed -->
-        <button type="button" class="todoapp__toggle-all active"></button>
+        <button 
+          v-if="!!todos.length"
+          type="button" 
+          class="todoapp__toggle-all"
+          :class="{ active: !!activeTodos.length}"
+          @click="toggleAll"
+        ></button>
 
         <!-- Add a todo on form submit -->
-        <form>
+        <form @submit.prevent="addTodo">
           <input
             type="text"
             class="todoapp__new-todo"
             placeholder="What needs to be done?"
+            v-model="title"
+            @input="errorMessage = ''"
           />
         </form>
       </header>
@@ -28,7 +105,7 @@
         <!-- This is a completed todo -->
         <div
           class="todo"
-          v-for="(todo, i) of todos"
+          v-for="(todo, i) of visibleTodos"
           :key="todo.id"
           :class="{ completed: todo.completed }"
         >
@@ -36,8 +113,7 @@
             <input
               type="checkbox"
               class="todo__status"
-              v-bind:checked="todo.completed"
-              @change="todo.completed = !todo.completed"
+              v-model="todo.completed"
             />
           </label>
 
@@ -68,20 +144,25 @@
       </section>
 
       <!-- Hide the footer if there are no todos -->
-      <footer class="todoapp__footer">
-        <span class="todo-count"> 3 items left </span>
+      <footer class="todoapp__footer" v-if="!!todos.length">
+        <span class="todo-count"> {{ activeTodos.length }} items left </span>
 
         <!-- Active link should have the 'selected' class -->
         <nav class="filter">
-          <a href="#/" class="filter__link selected"> All </a>
+          <a href="#/" class="filter__link" :class="{selected: status === 'all'}" @click="status = 'all'"> All </a>
 
-          <a href="#/active" class="filter__link"> Active </a>
+          <a href="#/active" class="filter__link" :class="{selected: status === 'active'}" @click="status = 'active'"> Active </a>
 
-          <a href="#/completed" class="filter__link"> Completed </a>
+          <a href="#/completed" class="filter__link" :class="{selected: status === 'completed'} " @click="status = 'completed'"> Completed </a>
         </nav>
 
         <!-- this button should be disabled if there are no completed todos -->
-        <button type="button" class="todoapp__clear-completed">
+        <button 
+          type="button" 
+          class="todoapp__clear-completed" 
+          :disabled="todos.length === activeTodos.length"
+          @click="todos = activeTodos"
+        >
           Clear completed
         </button>
       </footer>
@@ -90,18 +171,25 @@
     <!-- DON'T use conditional rendering to hide the notification -->
     <!-- Add the
     'hidden' class to hide the message smoothly -->
-    <div class="notification is-danger is-light has-text-weight-normal">
-      <button type="button" class="delete"></button>
+    <div class="notification is-danger is-light has-text-weight-normal" :class="{hidden: !errorMessage}" >
+      <button type="button" class="delete" @click="errorMessage = ''"></button>
       <!-- show only one message at a time -->
-      Unable to load todos
-      <br />
-      Title should not be empty
-      <br />
-      Unable to add a todo
-      <br />
-      Unable to delete a todo
-      <br />
-      Unable to update a todo
+      {{ errorMessage }}
     </div>
   </div>
 </template>
+
+
+<!-- 
+Unable to load todos
+<br />
+Title should not be empty
+<br />
+Unable to add a todo
+<br />
+Unable to delete a todo
+<br />
+Unable to update a todo 
+-->
+
+<!-- v-if="errorMessage"  it is from errorMessage div-->
