@@ -1,7 +1,6 @@
 <script setup>
 import { nextTick, ref } from 'vue';
 
-  //maybe need props instead of destruction todo
   const { todo } = defineProps(['todo']);
   const emit = defineEmits(['delete', 'update']);
 
@@ -73,8 +72,6 @@ import { nextTick, ref } from 'vue';
       >
         {{ todo.title }}
       </span>
-      <!-- Remove button appears only on hover -->
-      <!-- <button type="button" class="todo__remove" @click="todos.splice(i, 1)"> -->
       <button 
         type="button" 
         class="todo__remove" 
@@ -84,9 +81,7 @@ import { nextTick, ref } from 'vue';
       </button>
     </template>
 
-    <!-- overlay will cover the todo while it is being deleted or updated
-          -->
-    <div class="modal overlay" :class="{ 'is-active': false }">
+    <div class="modal overlay" :class="{ 'is-active': todo?.loading }">
       <div class="modal-background has-background-white-ter"></div>
       <div class="loader"></div>
     </div>

@@ -1,26 +1,23 @@
 <script setup>
-  import { computed, onBeforeMount, onMounted, ref, watch } from "vue";
+  import { computed, nextTick, onMounted, ref, watch } from "vue";
   import StatusFilter from './components/StatusFilter.vue';
   import TodoItem from "./components/TodoItem.vue";
+  import ErrorMessage from "./components/ErrorMessage.vue";
   import * as todoApi from './api/todos';
 
   const todos = ref([]);
   const title = ref('');
-  const errorMessage = ref('');
+  const errorMessage = ref(null);
   const status = ref('all')
-
-  // onBeforeMount(() => {
-  //   try {
-  //     todos.value = JSON.parse(localStorage.getItem('todos'));
-  //   } catch (error) {}
-
-  //   if (!Array.isArray(todos.value)) {
-  //     todos.value = [];
-  //   }
-  // })
+  const addTodoField = ref(null);
+  const tempTodo = ref(null);
 
   onMounted(async () => {
-    todos.value = await todoApi.getTodos();
+   try {
+      todos.value = await todoApi.getTodos();
+   } catch (error) {
+      errorMessage.value.show('Unable to load todos');
+   }
   })
 
   const activeTodos = computed(() => {
@@ -38,44 +35,70 @@
     }
   })
 
-  // watch(
-  //   todos,
-  //   newTodos => {
-  //     localStorage.setItem('todos', JSON.stringify(newTodos));
-  //   },
-  //   {deep: true},
-  // )
+  watch(
+    todos, 
+    async () => {
+    await nextTick();
+    addTodoField.value.focus();
+  });
+
+  const setLoading = (id, status = true) => {
+    todos.value = todos.value.map(todo => {
+      if (todo.id === id) {
+        return {...todo, loading: status};
+      }
+
+      return todo;
+    })
+  }
 
   async function addTodo() {
     if (!title.value) {
-      errorMessage.value = 'Title should not be empty';
+      errorMessage.value.show('Title should not be empty');
 
       return;
     };
 
-    const newTodo = await todoApi.createTodo(title.value);
+    tempTodo.value = {id: 0, title: title.value, completed: false, loading: true};
 
-    todos.value.push(newTodo);
+    try {
+      const newTodo = await todoApi.createTodo(title.value);
 
-    // todos.value.push({
-    //   id: Date.now(),
-    //   title: title.value,
-    //   completed: false,
-    // });
-
-    title.value = '';
+      todos.value.push(newTodo);
+      title.value = '';
+    } catch (error) {
+      errorMessage.value.show('Unable to add a todo');
+    } finally {
+      tempTodo.value = null;
+    }
   }
 
-  const deleteTodo = async (todoId) => {
-    await todoApi.deleteTodo(todoId);
-    todos.value = todos.value.filter(todo => todo.id !== todoId);
+  const removeTodo = async (todoId) => {
+    setLoading(todoId);
+
+    try {
+      await todoApi.deleteTodo(todoId);
+      todos.value = todos.value.filter(todo => todo.id !== todoId);
+    } catch (error) {
+      errorMessage.value.show('Unable to delete a todo');
+    } finally {
+      setLoading(todoId, false);
+    }
   };
 
   const updateTodo = async ({id, title, completed}) => {
-    const updatedTodo = await todoApi.updateTodo({id, title, completed});
-    const currentTodo = todos.value.find(todo => todo.id === id);
+    setLoading(id);
 
-    Object.assign(currentTodo, updatedTodo);
+    try {
+      const updatedTodo = await todoApi.updateTodo({id, title, completed});
+      const currentTodo = todos.value.find(todo => todo.id === id);
+  
+      Object.assign(currentTodo, updatedTodo);
+    } catch (error) {
+      errorMessage.value.show('Unable to update a todo');
+    } finally {
+      setLoading(id, false);
+    }
   }
 
   function toggleAll() {
@@ -91,8 +114,7 @@
   const clearAllCompleted = () => {
     const completedTodos = todos.value.filter(todo => todo.completed);
 
-    completedTodos.forEach(({id}) => todoApi.deleteTodo(id));
-    todos.value = activeTodos.value;
+    completedTodos.forEach(({id}) => removeTodo(id));
   }
 
 </script>
@@ -103,8 +125,6 @@
 
     <div class="todoapp__content">
       <header class="todoapp__header">
-        <!-- this button should have `active` class only if all todos are
-        completed -->
         <button 
           v-if="!!todos.length"
           type="button" 
@@ -113,9 +133,9 @@
           @click="toggleAll"
         ></button>
 
-        <!-- Add a todo on form submit -->
         <form @submit.prevent="addTodo">
           <input
+            ref="addTodoField"
             type="text"
             class="todoapp__new-todo"
             placeholder="What needs to be done?"
@@ -129,27 +149,25 @@
           tag="section"
           name="todolist"
           class="todoapp__main"
-          v-if="!!todos.length"
         >
+
 
         <TodoItem 
           v-for="todo of visibleTodos" 
           :key="todo.id" 
           :todo="todo" 
-          @delete="deleteTodo(todo.id)"
+          @delete="removeTodo(todo.id)"
           @update="updateTodo($event)"
         />
+
+        <TodoItem :todo="tempTodo" v-if="!!tempTodo"/>
       </TransitionGroup>
 
-      <!-- Hide the footer if there are no todos -->
       <footer class="todoapp__footer" v-if="!!todos.length">
         <span class="todo-count"> {{ activeTodos.length }} items left </span>
 
-        <!-- Active link should have the 'selected' class -->
         <StatusFilter v-model="status"/>
-        <!-- :status="status" @change="status = $event"  -->
 
-        <!-- this button should be disabled if there are no completed todos -->
         <button 
           type="button" 
           class="todoapp__clear-completed" 
@@ -161,14 +179,7 @@
       </footer>
     </div>
 
-    <!-- DON'T use conditional rendering to hide the notification -->
-    <!-- Add the
-    'hidden' class to hide the message smoothly -->
-    <div class="notification is-danger is-light has-text-weight-normal" :class="{hidden: !errorMessage}" >
-      <button type="button" class="delete" @click="errorMessage = ''"></button>
-      <!-- show only one message at a time -->
-      {{ errorMessage }}
-    </div>
+    <ErrorMessage @close="errorMessage = ''" class="is-warning" ref="errorMessage" />
   </div>
 </template>
 
@@ -185,17 +196,3 @@
     transform: scaleY(0);
   }
 </style>
-
-<!-- 
-Unable to load todos
-<br />
-Title should not be empty
-<br />
-Unable to add a todo
-<br />
-Unable to delete a todo
-<br />
-Unable to update a todo 
--->
-
-<!-- v-if="errorMessage"  it is from errorMessage div-->
