@@ -1,5 +1,7 @@
 <script setup>
   import { computed, onBeforeMount, ref, watch } from "vue";
+  import StatusFilter from './components/StatusFilter.vue';
+  import TodoItem from "./components/TodoItem.vue";
 
   const todos = ref([]);
   const title = ref('');
@@ -103,7 +105,7 @@
 
       <section class="todoapp__main">
         <!-- This is a completed todo -->
-        <div
+        <!-- <div
           class="todo"
           v-for="(todo, i) of visibleTodos"
           :key="todo.id"
@@ -127,18 +129,24 @@
 
           <template v-else>
             <span class="todo__title">{{ todo.title }}</span>
-            <!-- Remove button appears only on hover -->
+            Remove button appears only on hover
             <button type="button" class="todo__remove" @click="todos.splice(i, 1)">×</button>
           </template>
 
-          <!-- overlay will cover the todo while it is being deleted or updated
-          -->
+          overlay will cover the todo while it is being deleted or updated
           <div class="modal overlay" :class="{ 'is-active': false }">
             <div class="modal-background has-background-white-ter"></div>
             <div class="loader"></div>
           </div>
-        </div>
+        </div> -->
 
+        <TodoItem 
+          v-for="todo of visibleTodos" 
+          :key="todo.id" 
+          :todo="todo" 
+          @delete="todos.splice(todos.indexOf(todo), 1)"
+          @update="todos[todos.indexOf(todo)] = $event"
+        />
         <!-- This todo is an active todo -->
         
       </section>
@@ -148,13 +156,8 @@
         <span class="todo-count"> {{ activeTodos.length }} items left </span>
 
         <!-- Active link should have the 'selected' class -->
-        <nav class="filter">
-          <a href="#/" class="filter__link" :class="{selected: status === 'all'}" @click="status = 'all'"> All </a>
-
-          <a href="#/active" class="filter__link" :class="{selected: status === 'active'}" @click="status = 'active'"> Active </a>
-
-          <a href="#/completed" class="filter__link" :class="{selected: status === 'completed'} " @click="status = 'completed'"> Completed </a>
-        </nav>
+        <StatusFilter v-model="status"/>
+        <!-- :status="status" @change="status = $event"  -->
 
         <!-- this button should be disabled if there are no completed todos -->
         <button 
