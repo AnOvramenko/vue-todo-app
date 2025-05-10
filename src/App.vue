@@ -1,21 +1,26 @@
 <script setup>
-  import { computed, onBeforeMount, ref, watch } from "vue";
+  import { computed, onBeforeMount, onMounted, ref, watch } from "vue";
   import StatusFilter from './components/StatusFilter.vue';
   import TodoItem from "./components/TodoItem.vue";
+  import * as todoApi from './api/todos';
 
   const todos = ref([]);
   const title = ref('');
   const errorMessage = ref('');
   const status = ref('all')
 
-  onBeforeMount(() => {
-    try {
-      todos.value = JSON.parse(localStorage.getItem('todos'));
-    } catch (error) {}
+  // onBeforeMount(() => {
+  //   try {
+  //     todos.value = JSON.parse(localStorage.getItem('todos'));
+  //   } catch (error) {}
 
-    if (!Array.isArray(todos.value)) {
-      todos.value = [];
-    }
+  //   if (!Array.isArray(todos.value)) {
+  //     todos.value = [];
+  //   }
+  // })
+
+  onMounted(async () => {
+    todos.value = await todoApi.getTodos();
   })
 
   const activeTodos = computed(() => {
@@ -33,46 +38,63 @@
     }
   })
 
-  watch(
-    todos,
-    newTodos => {
-      localStorage.setItem('todos', JSON.stringify(newTodos));
-    },
-    {deep: true},
-  )
+  // watch(
+  //   todos,
+  //   newTodos => {
+  //     localStorage.setItem('todos', JSON.stringify(newTodos));
+  //   },
+  //   {deep: true},
+  // )
 
-  function addTodo() {
+  async function addTodo() {
     if (!title.value) {
       errorMessage.value = 'Title should not be empty';
 
       return;
     };
 
-    todos.value.push({
-      id: Date.now(),
-      title: title.value,
-      completed: false,
-    });
+    const newTodo = await todoApi.createTodo(title.value);
+
+    todos.value.push(newTodo);
+
+    // todos.value.push({
+    //   id: Date.now(),
+    //   title: title.value,
+    //   completed: false,
+    // });
 
     title.value = '';
   }
 
+  const deleteTodo = async (todoId) => {
+    await todoApi.deleteTodo(todoId);
+    todos.value = todos.value.filter(todo => todo.id !== todoId);
+  };
+
+  const updateTodo = async ({id, title, completed}) => {
+    const updatedTodo = await todoApi.updateTodo({id, title, completed});
+    const currentTodo = todos.value.find(todo => todo.id === id);
+
+    Object.assign(currentTodo, updatedTodo);
+  }
+
   function toggleAll() {
-    const isCompletedTodos = todos.value.every(todo => todo.completed === true);
+    const unCompletedTodos = todos.value.filter(todo => !todo.completed);
 
-    if (isCompletedTodos) {
-      todos.value = todos.value.map(todo => ({...todo, completed: !isCompletedTodos}));
+    if (unCompletedTodos.length === 0 || unCompletedTodos.length === todos.value.length) {
+      todos.value.forEach(todo => updateTodo({...todo, completed: !todo.completed}));
     } else {
-      todos.value = todos.value.map(todo => {
-        if (todo.completed === isCompletedTodos) {
-          return ({...todo, completed: !isCompletedTodos})
-        }
-
-        return todo;
-      })
+      unCompletedTodos.forEach(todo => updateTodo({...todo, completed: true}));
     }
   }
-  
+
+  const clearAllCompleted = () => {
+    const completedTodos = todos.value.filter(todo => todo.completed);
+
+    completedTodos.forEach(({id}) => todoApi.deleteTodo(id));
+    todos.value = activeTodos.value;
+  }
+
 </script>
 
 <template>
@@ -103,53 +125,21 @@
         </form>
       </header>
 
-      <section class="todoapp__main">
-        <!-- This is a completed todo -->
-        <!-- <div
-          class="todo"
-          v-for="(todo, i) of visibleTodos"
-          :key="todo.id"
-          :class="{ completed: todo.completed }"
+        <TransitionGroup 
+          tag="section"
+          name="todolist"
+          class="todoapp__main"
+          v-if="!!todos.length"
         >
-          <label class="todo__status-label">
-            <input
-              type="checkbox"
-              class="todo__status"
-              v-model="todo.completed"
-            />
-          </label>
-
-          <form v-if="false">
-            <input
-              type="text"
-              class="todo__title-field"
-              placeholder="Empty todo will be deleted"
-            />
-          </form>
-
-          <template v-else>
-            <span class="todo__title">{{ todo.title }}</span>
-            Remove button appears only on hover
-            <button type="button" class="todo__remove" @click="todos.splice(i, 1)">×</button>
-          </template>
-
-          overlay will cover the todo while it is being deleted or updated
-          <div class="modal overlay" :class="{ 'is-active': false }">
-            <div class="modal-background has-background-white-ter"></div>
-            <div class="loader"></div>
-          </div>
-        </div> -->
 
         <TodoItem 
           v-for="todo of visibleTodos" 
           :key="todo.id" 
           :todo="todo" 
-          @delete="todos.splice(todos.indexOf(todo), 1)"
-          @update="todos[todos.indexOf(todo)] = $event"
+          @delete="deleteTodo(todo.id)"
+          @update="updateTodo($event)"
         />
-        <!-- This todo is an active todo -->
-        
-      </section>
+      </TransitionGroup>
 
       <!-- Hide the footer if there are no todos -->
       <footer class="todoapp__footer" v-if="!!todos.length">
@@ -164,7 +154,7 @@
           type="button" 
           class="todoapp__clear-completed" 
           :disabled="todos.length === activeTodos.length"
-          @click="todos = activeTodos"
+          @click="clearAllCompleted"
         >
           Clear completed
         </button>
@@ -182,6 +172,19 @@
   </div>
 </template>
 
+<style scoped>
+  .todolist-enter-active,
+  .todolist-leave-active {
+    max-height: 60px;
+    transition: all 0.5s ease;
+  }
+  .todolist-enter-from,
+  .todolist-leave-to {
+    opacity: 0;
+    max-height: 0;
+    transform: scaleY(0);
+  }
+</style>
 
 <!-- 
 Unable to load todos
